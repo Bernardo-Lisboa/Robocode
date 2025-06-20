@@ -46,20 +46,23 @@ public class PecinhaItsOver extends AdvancedRobot
 		setAdjustRadarForGunTurn(true); // mover o radar independentemente
 		gunTurnAmt = 10;
 		moveAmount = Math.max(getBattleFieldWidth(), getBattleFieldHeight());
-		while(true) {
-			switch (currentMode) {
-                case caso1:
-                    stopAndGoMovement();
-                    break;
-                case caso2:
-                    randomMovement();
-                    break;
-                case caso3:
-                    spiralMovement();
-                    break;
-			}
-			updateMovementMode();
-			turnRadarRight(360);
+		turnLeft(getHeading() % 90);
+		ahead(moveAmount);
+		// Turn the gun to turn right 90 degrees.
+		peek = true;
+		turnGunRight(90);
+		turnRight(90);
+
+		while (true) {
+			// Look before we turn when ahead() completes.
+			peek = true;
+			// Move up the wall
+			ahead(moveAmount);
+			// Don't look now
+			peek = false;
+			// Turn to the next wall
+			turnRight(90);
+		}
 		}
 	}
 
@@ -97,7 +100,7 @@ public class PecinhaItsOver extends AdvancedRobot
 	 */
 	public void onHitWall(HitWallEvent e) {
 		back(50);
-        setTurnRight(90); 
+        	setTurnRight(90); 
 	}
 	
 	public void onHitRobot(HitRobotEvent e) {
@@ -126,41 +129,5 @@ public class PecinhaItsOver extends AdvancedRobot
 	}
 	return bearing;
 	}
-
-	private void randomMovement() {
-        double randomDistance = random.nextInt(200) - 100;
-        setAhead(randomDistance);
-        setTurnRight(random.nextInt(360)); // Randomize turn angle
-    }
-	private void spiralMovement() {
-        double turnAngle = 30 + random.nextInt(30);
-        setTurnRight(turnAngle);
-        setAhead(100);
-    }
-	private void strafeMovement() {
-        double strafeDistance = 30 + random.nextInt(60);
-        setMaxVelocity(8);
-        setAhead(strafeDistance);
-        setTurnRight(random.nextInt(90));
-    }
-	private void stopAndGoMovement() {
-        double moveDistance = 50;
-        setMaxVelocity(8);
-        setAhead(moveDistance);
-        execute();
-        setTurnRight(random.nextInt(90));
-    }
-		private void updateMovementMode() {
-        double distanceToEnemy = getDistanceRemaining();
-        if (distanceToEnemy < 100) {
-            currentMode = Mode.caso1;
-        }
-        else if (distanceToEnemy > 200) {
-            currentMode = Mode.caso2;
-        }
-        else {
-            currentMode = Mode.caso3;
-        }
-    }
 }
 
