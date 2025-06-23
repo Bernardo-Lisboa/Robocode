@@ -88,8 +88,11 @@ public class PecinhaItsOver extends AdvancedRobot
 	 * onHitByBullet: What to do when you're hit by a bullet
 	 */
 	public void onHitByBullet(HitByBulletEvent e) {
-		// Replace the next line with any behavior you would like
-		back(10);
+		int turnDirection = random.nextBoolean() ? 90 : -90;
+        	turnRight(turnDirection);
+        	ahead(150);
+        	turnRight(random.nextInt(180));
+        	ahead(100);
 	}
 	
 	/**
