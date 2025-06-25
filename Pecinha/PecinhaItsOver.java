@@ -1,169 +1,217 @@
 package Pecinha;
 import robocode.*;
-import robocode.HitByBulletEvent;
-import robocode.HitRobotEvent;
-import robocode.Robot;
-import robocode.ScannedRobotEvent;
-import static robocode.util.Utils.normalRelativeAngleDegrees;
-import java.awt.geom.Point2D;
-import java.util.Random;
-import java.awt.Color;
+import robocode.util.Utils;
+import java.awt.*;
+import java.awt.geom.*;
+import java.util.*;
 
-// API help : https://robocode.sourceforge.io/docs/robocode/robocode/Robot.html
+public class PecinhaItsOver extends AdvancedRobot {
 
-/**
- * PecinhaItsOver - a robot by (your name here)
- */
-public class PecinhaItsOver extends AdvancedRobot
-{
-	private Random random = new Random();
-	private enum Mode {
-        caso1, caso2, caso3, caso4
+    private static class EnemyWave {
+        Point2D.Double fireLocation;
+        long fireTime;
+        double bulletVelocity;
+        double directAngle;
+        double distanceTraveled;
+    	double maxEscapeAngle;
+		int direction;
+
+    	public static final int BINS = 31;
+    	public int[] guessFactors = new int[BINS];
+
+        public EnemyWave(Point2D.Double fireLocation, long fireTime, double bulletVelocity, double directAngle, int direction) {
+            this.fireLocation = fireLocation;
+            this.fireTime = fireTime;
+            this.bulletVelocity = bulletVelocity;
+            this.directAngle = directAngle;
+	        this.direction = direction;
+            this.maxEscapeAngle = Math.asin(10.0 / bulletVelocity);
+        }
+
+        public void update(long time) {
+            distanceTraveled = (time - fireTime) * bulletVelocity;
+        }
+	public int getFactorIndex(Point2D.Double hitLocation) { // guess factor calcula a melhor posicao pra se mover baseado onde foi atingido por tiros
+        double offsetAngle = Utils.normalRelativeAngle(Math.atan2(
+            hitLocation.x - fireLocation.x,
+            hitLocation.y - fireLocation.y
+        ) - directAngle);
+        double guessFactor = Math.max(-1, Math.min(1, offsetAngle / maxEscapeAngle)) * direction;
+        return (int) Math.round(((guessFactor + 1) / 2) * (BINS - 1));
+    	}
     }
-    private Mode currentMode = Mode.caso1;
-	double moveAmount;
-	int count = 0; // Keeps track of how long we've
-	// been searching for our target
-	double gunTurnAmt; // How much to turn our gun when searching
-	String trackName; // Name of the robot we're currently tracking
-	/**
-	 * run: PecinhaItsOver's default behavior
-	 */
-	public void run() {
-		// Initialization of the robot should be put here
 
-		// After trying out your robot, try uncommenting the import at the top,
-		// and the next line:
+    private final java.util.List<EnemyWave> enemyWaves = new ArrayList<>();
+    private double previousEnemyEnergy = 100;
+    private String targetName = null; // inimigo atual
+    private double targetDistance = Double.MAX_VALUE;
+	private int lateralDirection = 1;
 
-		// setColors(Color.red,Color.blue,Color.green); // body,gun,radar
-		setBodyColor(Color.BLACK);
-		setGunColor(Color.WHITE);
-		setRadarColor(Color.WHITE);
-		setRadarColor(Color.BLACK);
-		// Robot main loop
-		trackName = null;
-		setAdjustGunForRobotTurn(true); // mover a arma independentemente
-		setAdjustRadarForGunTurn(true); // mover o radar independentemente
-		gunTurnAmt = 10;
-		moveAmount = Math.max(getBattleFieldWidth(), getBattleFieldHeight());
-		while(true) {
-			switch (currentMode) {
-                case caso1:
-                    stopAndGoMovement();
-                    break;
-                case caso2:
-                    randomMovement();
-                    break;
-                case caso3:
-                    spiralMovement();
-                    break;
-			}
-			updateMovementMode();
-			turnRadarRight(360);
-		}
-	}
-
-	/**
-	 * onScannedRobot: What to do when you see another robot
-	 */
-	public void onScannedRobot(ScannedRobotEvent e) {
-		double firePower = Math.min(500 / e.getDistance(), 3);
-		double turnGunAmt = normalRelativeAngleDegrees(e.getBearing() + getHeading() - getGunHeading());
-		double bulletSpeed = 20 - firePower * 3;
-		long time = (long)(e.getDistance() / bulletSpeed);
-		double absBearingDeg = (getHeading() + e.getBearing());
-		if (absBearingDeg < 0) absBearingDeg += 360;
-		double x = getX() + Math.sin(Math.toRadians(absBearingDeg)) * e.getDistance();
-		double y = getY() + Math.cos(Math.toRadians(absBearingDeg)) * e.getDistance();
-		double futureX = x + Math.sin(Math.toRadians(getHeading())) * getVelocity() * time;
-		double futureY = y + Math.cos(Math.toRadians(getHeading())) * getVelocity() * time;
-		double absDeg = absoluteBearing(getX(), getY(), futureX, futureY);
-		setTurnGunRight(normalizeBearing(absDeg - getGunHeading()));
-		if (getGunHeat() == 0 && Math.abs(getGunTurnRemaining()) < 10) {
-			setFire(firePower);
-		}
-		scan();
-	}
-	/**
-	 * onHitByBullet: What to do when you're hit by a bullet
-	 */
-	public void onHitByBullet(HitByBulletEvent e) {
-		int turnDirection = random.nextBoolean() ? 90 : -90;
-        	turnRight(turnDirection);
-        	ahead(150);
-        	turnRight(random.nextInt(180));
-        	ahead(100);
-	}
-	
-	/**
-	 * onHitWall: What to do when you hit a wall
-	 */
-	public void onHitWall(HitWallEvent e) {
-		back(50);
-        setTurnRight(90); 
-	}
-	
-	public void onHitRobot(HitRobotEvent e) {
-		back(50);
+    public void run() {
+        setAdjustGunForRobotTurn(true);
+        setAdjustRadarForGunTurn(true);
+        setAdjustRadarForRobotTurn(true);
+        setBodyColor(Color.BLACK);
+        setGunColor(Color.WHITE);
+        setRadarColor(Color.RED);
 		setTurnRight(90);
-	}
-	public double normalizeBearing(double angle) {
-	while (angle >  180) angle -= 360;
-	while (angle < -180) angle += 360;
-	return angle;
-	}
-	double absoluteBearing(double x1, double y1, double x2, double y2) {
-	double xo = x2-x1;
-	double yo = y2-y1;
-	double hyp = Point2D.distance(x1, y1, x2, y2);
-	double arcSin = Math.toDegrees(Math.asin(xo / hyp));
-	double bearing = 0;
-	if (xo > 0 && yo > 0) { // both pos: lower-Left
-		bearing = arcSin;
-	} else if (xo < 0 && yo > 0) { // x neg, y pos: lower-right
-		bearing = 360 + arcSin; // arcsin is negative here, actuall 360 - ang
-	} else if (xo > 0 && yo < 0) { // x pos, y neg: upper-left
-		bearing = 180 - arcSin;
-	} else if (xo < 0 && yo < 0) { // both neg: upper-right
-		bearing = 180 - arcSin; // arcsin is negative here, actually 180 + ang
-	}
-	return bearing;
-	}
+		setAhead(100);
+        while (true) {
+            setTurnRadarRight(360); // radar sempre girando
+            surfWaves(); // se mover
+            execute();
+        }
+    }
 
-	private void randomMovement() {
-        double randomDistance = random.nextInt(200) - 100;
-        setAhead(randomDistance);
-        setTurnRight(random.nextInt(360)); // Randomize turn angle
+    public void onScannedRobot(ScannedRobotEvent e) {
+        double energyDrop = previousEnemyEnergy - e.getEnergy();
+		double absBearing = getHeadingRadians() + e.getBearingRadians();
+		double enemyHeading = absBearing;
+		double enemyBearing = e.getBearingRadians();
+		double myHeading = getHeadingRadians();
+		double lateralVelocity = getVelocity() * Math.sin(enemyBearing);
+		lateralDirection = (lateralVelocity >= 0) ? 1 : -1;
+        if (energyDrop > 0 && energyDrop <= 3) { // detecta tiros da queda de energia do inimigo
+            double bulletVelocity = 20 - 3 * energyDrop;
+            absBearing = getHeadingRadians() + e.getBearingRadians();
+            Point2D.Double myLocation = new Point2D.Double(getX(), getY());
+            Point2D.Double enemyLocation = project(myLocation, absBearing, e.getDistance());
+	    int direction = 1;
+            enemyWaves.add(new EnemyWave(enemyLocation, getTime(), bulletVelocity, absBearing, direction));
+        }
+
+        previousEnemyEnergy = e.getEnergy();
+	if (targetName == null || e.getDistance() < targetDistance || !e.getName().equals(targetName)) { // troca de alvo se outro robo inimigo estiver mais perto
+            targetName = e.getName();
+            targetDistance = e.getDistance();
+        }
+	if (!e.getName().equals(targetName)) return; // so interage com esse robo
+	double radarOffset = Utils.normalRelativeAngle(getHeadingRadians() + e.getBearingRadians() - getRadarHeadingRadians());
+		setTurnRadarRightRadians(radarOffset * 2); // trava o radar no inimigo
+	double gunTurn = getHeadingRadians() + e.getBearingRadians() - getGunHeadingRadians();
+        setTurnGunRightRadians(normalizeBearing(gunTurn)); // trava a arma no robo inimigo
+        if (e.getDistance() < 150) { // atira com diferentes potencias se estiver a uma certa distancia 
+            setFire(3);
+        } else if (e.getDistance() < 300) {
+            setFire(2);
+        } else {
+            setFire(1);
+        }
     }
-	private void spiralMovement() {
-        double turnAngle = 30 + random.nextInt(30);
-        setTurnRight(turnAngle);
+
+    private void surfWaves() { // o robo se move baseado nas possiveis posicoes do tiro de outro robo
+        Point2D.Double myLocation = new Point2D.Double(getX(), getY());
+    EnemyWave closestWave = null;
+    double closestDistance = Double.MAX_VALUE;
+
+    // encontra a onda mais próxima
+    for (EnemyWave wave : enemyWaves) {
+        wave.update(getTime());
+        double distance = wave.fireLocation.distance(myLocation) - wave.distanceTraveled;
+        if (distance < closestDistance && wave.distanceTraveled > 0) {
+            closestDistance = distance;
+            closestWave = wave;
+        }
+    }
+
+    if (closestWave != null) {
+        // simula o perigo de mover para a esquerda ou para a direita
+        double dangerLeft = checkDanger(closestWave, -1, myLocation);
+        double dangerRight = checkDanger(closestWave, 1, myLocation);
+
+        // escolhe a direção mais segura
+        int goDirection = (dangerLeft < dangerRight) ? -1 : 1;
+
+        double angleOffset = closestWave.maxEscapeAngle * goDirection;
+        double moveAngle = wallSmoothing(myLocation, closestWave.directAngle + angleOffset, goDirection == 1);
+        setTurnRightRadians(normalRelativeAngle(moveAngle - getHeadingRadians()));
         setAhead(100);
-    }
-	private void strafeMovement() {
-        double strafeDistance = 30 + random.nextInt(60);
-        setMaxVelocity(8);
-        setAhead(strafeDistance);
-        setTurnRight(random.nextInt(90));
-    }
-	private void stopAndGoMovement() {
-        double moveDistance = 50;
-        setMaxVelocity(8);
-        setAhead(moveDistance);
-        execute();
-        setTurnRight(random.nextInt(90));
-    }
-		private void updateMovementMode() {
-        double distanceToEnemy = getDistanceRemaining();
-        if (distanceToEnemy < 100) {
-            currentMode = Mode.caso1;
-        }
-        else if (distanceToEnemy > 200) {
-            currentMode = Mode.caso2;
-        }
-        else {
-            currentMode = Mode.caso3;
-        }
+
+        // remove ondas antigas
+        enemyWaves.removeIf(wave ->
+            wave.distanceTraveled > wave.fireLocation.distance(myLocation) + 50);
     }
 }
 
+    private double wallSmoothing(Point2D.Double location, double angle, boolean clockwise) { // para nao bater na parede
+        double wallStick = 30;
+        double smoothedAngle = angle;
+        Rectangle2D.Double fieldRect = new Rectangle2D.Double(18, 18,
+                getBattleFieldWidth() - 36, getBattleFieldHeight() - 36);
+
+        for (int i = 0; i < 100; i++) {
+            Point2D.Double projected = project(location, smoothedAngle, wallStick);
+            if (fieldRect.contains(projected)) {
+                break;
+            }
+            smoothedAngle += (clockwise ? -0.05 : 0.05);
+        }
+        return smoothedAngle;
+    }
+
+    private Point2D.Double project(Point2D.Double source, double angle, double length) {
+        return new Point2D.Double(source.x + Math.sin(angle) * length,
+                                  source.y + Math.cos(angle) * length);
+    }
+
+    private double normalizeBearing(double angle) {
+        while (angle > 180) angle -= 360;
+        while (angle < -180) angle += 360;
+        return angle;
+    }
+
+    private double normalRelativeAngle(double angle) {
+        while (angle > Math.PI) angle -= 2 * Math.PI;
+        while (angle < -Math.PI) angle += 2 * Math.PI;
+        return angle;
+    }
+
+    private double absoluteBearing(double x1, double y1, double x2, double y2) {
+        double xo = x2 - x1;
+        double yo = y2 - y1;
+        double hyp = Point2D.distance(x1, y1, x2, y2);
+        double arcSin = Math.toDegrees(Math.asin(xo / hyp));
+        double bearing = 0;
+
+        if (xo > 0 && yo > 0) {
+            bearing = arcSin;
+        } else if (xo < 0 && yo > 0) {
+            bearing = 360 + arcSin;
+        } else if (xo > 0 && yo < 0) {
+            bearing = 180 - arcSin;
+        } else if (xo < 0 && yo < 0) {
+            bearing = 180 - arcSin;
+        }
+        return bearing;
+    }
+	private double checkDanger(EnemyWave wave, int direction, Point2D.Double myLocation) {
+    double guessFactor = direction * 1.0;
+    double angleOffset = wave.maxEscapeAngle * guessFactor;
+    double testAngle = wave.directAngle + angleOffset;
+    Point2D.Double projected = project(myLocation, testAngle, wave.bulletVelocity);
+    int index = wave.getFactorIndex(projected);
+    return wave.guessFactors[index];
+}
+
+    public void onHitByBullet(HitByBulletEvent e) {
+		Point2D.Double myLocation = new Point2D.Double(getX(), getY());
+    	for (Iterator<EnemyWave> it = enemyWaves.iterator(); it.hasNext(); ) {
+        	EnemyWave wave = it.next();
+        	double distance = wave.fireLocation.distance(myLocation) - wave.distanceTraveled;
+        	if (Math.abs(distance) < wave.bulletVelocity) {
+            	int index = wave.getFactorIndex(myLocation);
+            	wave.guessFactors[index] += 1;
+            	it.remove(); // remove a onda que acertou
+            	break;
+        	}
+    	}
+    }
+
+    public void onHitWall(HitWallEvent e) {
+
+    }
+
+    public void onHitRobot(HitRobotEvent e) {
+        setBack(100);
+    }
+}
